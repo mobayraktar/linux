@@ -11,10 +11,10 @@
 #include <dt-bindings/leds/common.h>
 #include <dt-bindings/net/ti-dp83867.h>
 #include <dt-bindings/phy/phy.h>
+#include "k3-j722s.dtsi"
+#include <dt-bindings/mux/ti-serdes.h>
 #include <dt-bindings/gpio/gpio.h>
 #include <dt-bindings/pwm/pwm.h>
-#include "k3-j722s.dtsi"
-#include "k3-serdes.h"
 #include "k3-am67a-t3-gem-o1-pinmux.dtsi"
 
 / {
@@ -266,6 +266,35 @@
 		standby-gpios = <&main_gpio0 13 GPIO_ACTIVE_LOW>;
 	};
 
+
+	hdmi0: connector-hdmi {
+		compatible = "hdmi-connector";
+		label = "hdmi";
+		type = "a";
+		port {
+			hdmi_connector_in: endpoint {
+				remote-endpoint = <&sii9022_out>;
+			};
+		};
+	};
+
+	sound0: sound {
+		compatible = "simple-audio-card";
+		simple-audio-card,name = "sii9022 HDMI";
+		simple-audio-card,format = "i2s";
+		simple-audio-card,bitclock-master = <&hdmi_dailink_master>;
+		simple-audio-card,frame-master = <&hdmi_dailink_master>;
+
+		hdmi_dailink_master: simple-audio-card,cpu {
+			sound-dai = <&mcasp1>;
+			system-clock-direction-out;
+		};
+
+		simple-audio-card,codec {
+			sound-dai = <&sii9022>;
+		};
+	};
+
 	fan: cooling_fan {
 		compatible = "pwm-fan";
 		pinctrl-names = "default";
@@ -302,21 +331,9 @@
 };
 
 &main_pmx0 {
+	bootph-all;
+
 	/delete-property/ interrupts;
-
-	pinctrl-single,gpio-range =
-	<&main_pmx0_range 0 32 PIN_GPIO_RANGE_IOPAD>,
-	<&main_pmx0_range 33 38 PIN_GPIO_RANGE_IOPAD>,
-	<&main_pmx0_range 72 17 PIN_GPIO_RANGE_IOPAD>,
-	<&main_pmx0_range 101 25 PIN_GPIO_RANGE_IOPAD>,
-	<&main_pmx0_range 137 5 PIN_GPIO_RANGE_IOPAD>,
-	<&main_pmx0_range 143 3 PIN_GPIO_RANGE_IOPAD>,
-	<&main_pmx0_range 149 2 PIN_GPIO_RANGE_IOPAD>;
-
-	main_pmx0_range: gpio-range {
-		#pinctrl-single,gpio-range-cells = <3>;
-	};
-
 	main_i2c0_pins_default: main-i2c0-default-pins {
 		pinctrl-single,pins = <
 			J722S_IOPAD(0x01e0, PIN_INPUT_PULLUP, 0) /* (D23) I2C0_SCL */
@@ -642,7 +659,6 @@
 &cpsw_port1 {
 	phy-mode = "rgmii-rxid";
 	phy-handle = <&cpsw3g_phy0>;
-	status = "okay";
 };
 
 &cpsw_port2 {
@@ -764,15 +780,6 @@
 
 &mcu_pmx0 {
 	bootph-all;
-
-	pinctrl-single,gpio-range =
-	<&mcu_pmx_range 0 21 PIN_GPIO_RANGE_IOPAD>,
-	<&mcu_pmx_range 23 1 PIN_GPIO_RANGE_IOPAD>,
-	<&mcu_pmx_range 32 2 PIN_GPIO_RANGE_IOPAD>;
-
-	mcu_pmx_range: gpio-range {
-		#pinctrl-single,gpio-range-cells = <3>;
-	};
 
 	wkup_uart0_pins_default: wkup-uart0-default-pins {
 		pinctrl-single,pins = <
@@ -1010,6 +1017,50 @@ dsi0_csi1_i2c: &main_i2c0 {
 	pinctrl-0 = <&main_i2c1_pins_default>;
 	clock-frequency = <100000>;
 	bootph-all;
+
+	sii9022: bridge-hdmi@3b {
+		compatible = "sil,sii9022";
+		reg = <0x3b>;
+
+		pinctrl-names = "default";
+		pinctrl-0 = <&hdmi_gpio_pins_default>;
+
+		reset-gpios = <&mcu_gpio0 11 GPIO_ACTIVE_LOW>;
+
+		iovcc-supply = <&vdd_3v3>;
+		cvcc12-supply = <&ldo2_reg>;
+
+		interrupt-parent = <&mcu_gpio0>;
+		interrupts = <14 IRQ_TYPE_EDGE_FALLING>;
+
+		#sound-dai-cells = <0>;
+		sil,i2s-data-lanes = < 0 >;
+
+		hdmi_tx_ports: ports {
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			/*
+			 * HDMI can be serviced with 3 potential VPs -
+			 * (DSS0 VP1 / DSS1 VP0 / DSS1 VP1).
+			 * For now, we will service it with DSS0 VP1.
+			 */
+			port@0 {
+				reg = <0>;
+				sii9022_in: endpoint {
+					remote-endpoint = <&dss1_dpi0_out>;
+				};
+			};
+
+			port@1 {
+				reg = <1>;
+
+				sii9022_out: endpoint {
+					remote-endpoint = <&hdmi_connector_in>;
+				};
+			};
+		};
+	};
 };
 
 csi0_i2c: &main_i2c2 {
@@ -1078,6 +1129,20 @@ csi0_i2c: &main_i2c2 {
 	status = "disabled";
 };
 
+&dphy_tx0 {
+	status = "okay";
+};
+
+&dsi0 {
+	status = "disabled";
+	#address-cells = <1>;
+	#size-cells = <0>;
+
+	bridge@0 {
+		status = "disabled";
+	};
+};
+
 &mailbox0_cluster0 {
 	status = "okay";
 	mbox_r5_0: mbox-r5-0 {
@@ -1115,13 +1180,53 @@ csi0_i2c: &main_i2c2 {
 	};
 };
 
+&wkup_r5fss0 {
+	status = "disabled";
+};
+
+&wkup_r5fss0_core0 {
+	mboxes = <&mailbox0_cluster0 &mbox_r5_0>;
+	memory-region = <&wkup_r5fss0_core0_dma_memory_region>,
+			<&wkup_r5fss0_core0_memory_region>;
+};
+
+&mcu_r5fss0 {
+	status = "okay";
+};
+
+&mcu_r5fss0_core0 {
+	mboxes = <&mailbox0_cluster1 &mbox_mcu_r5_0>;
+	memory-region = <&mcu_r5fss0_core0_dma_memory_region>,
+			<&mcu_r5fss0_core0_memory_region>;
+};
+
+&main_r5fss0 {
+	status = "okay";
+};
+
+&main_r5fss0_core0 {
+	mboxes = <&mailbox0_cluster3 &mbox_main_r5_0>;
+	memory-region = <&main_r5fss0_core0_dma_memory_region>,
+			<&main_r5fss0_core0_memory_region>;
+};
+
+&c7x_0 {
+	status = "okay";
+	mboxes = <&mailbox0_cluster2 &mbox_c7x_0>;
+	memory-region = <&c7x_0_dma_memory_region>,
+			<&c7x_0_memory_region>;
+};
+
+&c7x_1 {
+	status = "okay";
+	mboxes = <&mailbox0_cluster3 &mbox_c7x_1>;
+	memory-region = <&c7x_1_dma_memory_region>,
+			<&c7x_1_memory_region>;
+};
+
 &serdes_ln_ctrl {
 	idle-states = <J722S_SERDES0_LANE0_USB>,
 			  <J722S_SERDES1_LANE0_PCIE0_LANE0>;
-};
-
-&serdes_wiz0 {
-	status = "okay";
 };
 
 &serdes0 {
@@ -1135,12 +1240,7 @@ csi0_i2c: &main_i2c2 {
 	};
 };
 
-&serdes_wiz1 {
-	status = "okay";
-};
-
 &serdes1 {
-	status = "okay";
 	serdes1_pcie_link: phy@0 {
 		reg = <0>;
 		cdns,num-lanes = <1>;
@@ -1209,6 +1309,35 @@ csi0_i2c: &main_i2c2 {
 	reset-gpios = <&mcu_gpio0 6 GPIO_ACTIVE_HIGH>;
 };
 
+&dss1 {
+	status = "okay";
+	pinctrl-names = "default";
+	pinctrl-0 = <&main_dpi_pins_default>;
+
+	clocks = <&k3_clks 232 8>,
+		 <&k3_clks 232 0>,
+		 <&k3_clks 232 4>;
+
+	assigned-clocks = <&k3_clks 241 0>, /* DSS1-VP0 */
+			  <&k3_clks 240 0>, /* DSS1-VP1 */
+			  <&k3_clks 245 0>; /* DPI Output */
+
+	assigned-clock-parents = <&k3_clks 241 2>,	/* PLL 17 HDMI */
+				 <&k3_clks 240 1>,	/* PLL 18 DSI */
+				 <&k3_clks 245 2>;	/* DSS1-DPI0 */
+};
+
+&dss1_ports {
+	/* DSS1-VP1: DPI/HDMI Output */
+	port@0 {
+		reg = <0>;
+
+		dss1_dpi0_out: endpoint {
+			remote-endpoint = <&sii9022_in>;
+		};
+	};
+};
+
 &main_mcan0 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&main_mcan0_pins_default>;
@@ -1232,24 +1361,4 @@ csi0_i2c: &main_i2c2 {
 	>;
 	tx-num-evt = <32>;
 	rx-num-evt = <32>;
-};
-
-&mcu_rti0 {
-	assigned-clock-parents = <&k3_clks 131 4>;
-};
-
-&main_rti0 {
-	assigned-clock-parents = <&k3_clks 125 4>;
-};
-
-&main_rti1 {
-	assigned-clock-parents = <&k3_clks 126 4>;
-};
-
-&main_rti2 {
-	assigned-clock-parents = <&k3_clks 127 4>;
-};
-
-&main_rti3 {
-	assigned-clock-parents = <&k3_clks 128 4>;
 };

@@ -312,4 +312,5 @@ DTC_FLAGS_k3-am642-evm += -@
 DTC_FLAGS_k3-am62-pocketbeagle2 += -@
 DTC_FLAGS_k3-am625-beaglemod += -@
 DTC_FLAGS_k3-am67a-beagley-ai += -@
+DTC_FLAGS_k3-am67a-t3-gem-o1 += -@
 DTC_FLAGS_k3-j721e-beagleboneai64 += -@
